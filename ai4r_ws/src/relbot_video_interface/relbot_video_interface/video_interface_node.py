@@ -1,10 +1,15 @@
 #!/usr/bin/env python3
+from xml.parsers.expat import model
+
+from pyexpat import model
+
 import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Point
 import gi
 import numpy as np
 import cv2
+from ultralytics import YOLO
 
 gi.require_version('Gst', '1.0')
 from gi.repository import Gst
@@ -15,6 +20,9 @@ class VideoInterfaceNode(Node):
         # Publisher: sends object position to the RELBot
         # Topic `/object_position` is watched by the robot controller for actuation
         self.position_pub = self.create_publisher(Point, '/object_position', 10)
+
+        # Add YOLO
+        self.model_yolo = YOLO("yolo26n.pt")
 
         # Declare GStreamer pipeline as a parameter for flexibility
         self.declare_parameter('gst_pipeline', (
@@ -64,7 +72,14 @@ class VideoInterfaceNode(Node):
         cv2.waitKey(1)
 
         # TODO: Insert detection/tracking logic here to compute object position
+        results = self.model_yolo(frame, classes=[0])
+        boxes = results[0].boxes
 
+        if boxes is not None and len(boxes) > 0:
+            box = boxes[0]  # Get the first box
+            x1, y1, x2, y2 = box.xyxy[0].tolist()
+            x_center = (x1 + x2) / 2
+            y_center = (y1 + y2) / 2
 
         # TODO: Insert detection/tracking logic here to compute object position
         # For demonstration, here we are publishing a dummy Point at origin
@@ -73,10 +88,12 @@ class VideoInterfaceNode(Node):
         # y = unused (flat-ground assumption)
         # z = object area (controller caps at 10000 to stop robot when object is too large)
         msg = Point()
-        msg.x = 200.0  # object center x-coordinate
-        msg.y = 0.0  # y-coordinate unused
+        msg.x = x_center  # object center x-coordinate
+        msg.y = y_center  # y-coordinate unused
         msg.z = 10001.0  # object area; >10000 indicates 'too close'
         self.position_pub.publish(msg)
+
+        
         # To adjust robot behavior, apply a scaling factor to 'z' (e.g., couple with depth estimation)
         # Log at debug level if needed:
         # self.get_logger().debug(f'Published position: ({msg.x}, {msg.y}, {msg.z})')
