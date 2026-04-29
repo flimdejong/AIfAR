@@ -25,7 +25,7 @@ class VideoInterfaceNode(Node):
         self.model_yolo = YOLO("yolo26n.pt")
 
         # Init center positions
-        self.x_center = 0
+        self.x_center = 0.0
 
         # Declare GStreamer pipeline as a parameter for flexibility
         self.declare_parameter('gst_pipeline', (
@@ -82,7 +82,7 @@ class VideoInterfaceNode(Node):
             box = boxes[0]  # Get the first box
             x1, y1, x2, y2 = box.xyxy[0].tolist()
             self.x_center = (x1 + x2) / 2
-            
+
         # TODO: Insert detection/tracking logic here to compute object position
         # For demonstration, here we are publishing a dummy Point at origin
                 # Compute and publish object position:
@@ -94,6 +94,8 @@ class VideoInterfaceNode(Node):
         msg.y = 0         # y-coordinate unused
         msg.z = 10001.0  # object area; >10000 indicates 'too close'
         self.position_pub.publish(msg)
+
+        self.get_logger().info(f'Published position: x={msg.x}, z={msg.z}')
         
         # To adjust robot behavior, apply a scaling factor to 'z' (e.g., couple with depth estimation)
         # Log at debug level if needed:
