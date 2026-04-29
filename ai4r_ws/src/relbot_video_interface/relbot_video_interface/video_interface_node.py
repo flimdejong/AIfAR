@@ -10,6 +10,9 @@ import gi
 import numpy as np
 import cv2
 from ultralytics import YOLO
+from transformers import pipeline
+from PIL import Image
+import requests
 
 gi.require_version('Gst', '1.0')
 from gi.repository import Gst
@@ -21,8 +24,9 @@ class VideoInterfaceNode(Node):
         # Topic `/object_position` is watched by the robot controller for actuation
         self.position_pub = self.create_publisher(Point, '/object_position', 10)
 
-        # Add YOLO
+        # Add YOLO and DA
         self.model_yolo = YOLO("yolo26n.pt")
+        self.pipe = pipeline(task="depth-estimation", model="depth-anything/Depth-Anything-V2-Small-hf")
 
         # Init center positions
         self.x_center = 0.0
@@ -83,6 +87,13 @@ class VideoInterfaceNode(Node):
             x1, y1, x2, y2 = box.xyxy[0].tolist()
             self.x_center = (x1 + x2) / 2
 
+            # Add Depth Anything
+            pil_frame = Image.fromarray(frame)
+            depth = np.array(self.pipe(pil_frame)["predicted_depth"]) ## Contains the depth map
+
+            person_depth = depth[y1:y2, x1:x2].mean()  # Average depth in the bounding box
+            self.get_logger().info(f'Person detected at x={self.x_center:.2f}, depth={person_depth:.2f}')
+
         # TODO: Insert detection/tracking logic here to compute object position
         # For demonstration, here we are publishing a dummy Point at origin
                 # Compute and publish object position:
@@ -95,7 +106,7 @@ class VideoInterfaceNode(Node):
         msg.z = 10001.0  # object area; >10000 indicates 'too close'
         self.position_pub.publish(msg)
 
-        self.get_logger().info(f'Published position: x={msg.x}, z={msg.z}')
+        # self.get_logger().info(f'Published position: x={msg.x}, z={msg.z}')
         
         # To adjust robot behavior, apply a scaling factor to 'z' (e.g., couple with depth estimation)
         # Log at debug level if needed:
