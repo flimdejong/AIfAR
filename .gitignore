@@ -1,0 +1,7 @@
+.DS_Store
+**/.DS_Store
+.vscode/
+.idea/
+venv/
+myenv/
+__pycache__/

@@ -1,18 +1,10 @@
 #!/usr/bin/env python3
-from xml.parsers.expat import model
-
-from pyexpat import model
-
 import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Point
 import gi
 import numpy as np
 import cv2
-from ultralytics import YOLO
-from transformers import pipeline
-from PIL import Image
-import requests
 
 gi.require_version('Gst', '1.0')
 from gi.repository import Gst
@@ -23,13 +15,6 @@ class VideoInterfaceNode(Node):
         # Publisher: sends object position to the RELBot
         # Topic `/object_position` is watched by the robot controller for actuation
         self.position_pub = self.create_publisher(Point, '/object_position', 10)
-
-        # Add YOLO and DA
-        self.model_yolo = YOLO("yolo26n.pt")
-        self.pipe = pipeline(task="depth-estimation", model="depth-anything/Depth-Anything-V2-Small-hf")
-
-        # Init center positions
-        self.x_center = 0.0
 
         # Declare GStreamer pipeline as a parameter for flexibility
         self.declare_parameter('gst_pipeline', (
@@ -79,20 +64,6 @@ class VideoInterfaceNode(Node):
         cv2.waitKey(1)
 
         # TODO: Insert detection/tracking logic here to compute object position
-        results = self.model_yolo(frame, classes=[0])
-        boxes = results[0].boxes
-
-        if boxes is not None and len(boxes) > 0:
-            box = boxes[0]  # Get the first box
-            x1, y1, x2, y2 = box.xyxy[0].tolist()
-            self.x_center = (x1 + x2) / 2
-
-            # Add Depth Anything
-            pil_frame = Image.fromarray(frame)
-            depth = np.array(self.pipe(pil_frame)["predicted_depth"]) ## Contains the depth map
-
-            person_depth = depth[y1:y2, x1:x2].mean()  # Average depth in the bounding box
-            self.get_logger().info(f'Person detected at x={self.x_center:.2f}, depth={person_depth:.2f}')
 
         # TODO: Insert detection/tracking logic here to compute object position
         # For demonstration, here we are publishing a dummy Point at origin
@@ -101,13 +72,10 @@ class VideoInterfaceNode(Node):
         # y = unused (flat-ground assumption)
         # z = object area (controller caps at 10000 to stop robot when object is too large)
         msg = Point()
-        msg.x = self.x_center  # object center x-coordinate
-        msg.y = 0         # y-coordinate unused
+        msg.x = 200.0  # object center x-coordinate
+        msg.y = 0.0  # y-coordinate unused
         msg.z = 10001.0  # object area; >10000 indicates 'too close'
         self.position_pub.publish(msg)
-
-        # self.get_logger().info(f'Published position: x={msg.x}, z={msg.z}')
-        
         # To adjust robot behavior, apply a scaling factor to 'z' (e.g., couple with depth estimation)
         # Log at debug level if needed:
         # self.get_logger().debug(f'Published position: ({msg.x}, {msg.y}, {msg.z})')
