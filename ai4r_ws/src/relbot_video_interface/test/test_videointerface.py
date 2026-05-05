@@ -7,7 +7,7 @@ from transformers import pipeline
 
 import os
 current_dir = os.path.dirname(os.path.abspath(__file__))
-yolo_dir_cpu = os.path.join(current_dir, "..", "resource", "yolov8n_openvino_model") # use the yolov8n_openvino_model/ directory from outside the current folder.
+yolo_dir_cpu = os.path.join(current_dir, "..", "resource", "yolov8n", "yolov8n.onnx") # use the yolov8n_openvino_model/ directory from outside the current folder.
 yolo_dir_gpu = os.path.join(current_dir, "..", "resource", "yolo26n.pt")
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -24,7 +24,7 @@ else:
                       device=0) # use GPU for depth estimation if available
 
 
-cap = cv2.VideoCapture(2)  # /dev/video0. change this if PROBLEM!!!
+cap = cv2.VideoCapture(0)  # /dev/video0. change this if PROBLEM!!!
 frame_count = 0
 person_depth = 0.0
 

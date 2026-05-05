@@ -5,9 +5,18 @@ from geometry_msgs.msg import Point
 import gi
 import numpy as np
 import cv2
+from ultralytics import YOLO
+from PIL import Image
+from transformers import pipeline
+import torch
 
 gi.require_version('Gst', '1.0')
 from gi.repository import Gst
+
+# Some constants
+IMG_SIZE = 320  # YOLO input size. onnx is also exported with this size!! To change: `yolo export model=yolov8n.pt format=onnx imgsz=NEWSIZE` in terminal.
+PERSON_CLASS_ID = 0  # COCO class ID for 'person'
+DEBUG = False  # Set to True to visualize input frames and debug info
 
 class VideoInterfaceNode(Node):
     def __init__(self):
@@ -16,14 +25,35 @@ class VideoInterfaceNode(Node):
         # Topic `/object_position` is watched by the robot controller for actuation
         self.position_pub = self.create_publisher(Point, '/object_position', 10)
 
-        # Declare GStreamer pipeline as a parameter for flexibility
+        # Declare GStreamer pipeline + YOLO model path as parameters for flexibility
         self.declare_parameter('gst_pipeline', (
             'udpsrc port=5000 caps="application/x-rtp,media=video,'
             'encoding-name=H264,payload=96" ! '
             'rtph264depay ! avdec_h264 ! videoconvert ! '
             'video/x-raw,format=RGB ! appsink name=sink'
         ))
+        self.declare_parameter('yolo_path', 'resource/yolov8n/yolov8n.onnx') # onnx file from resource/yolov8n/yolov8n.onnx
+
         pipeline_str = self.get_parameter('gst_pipeline').value
+        yolo_path = self.get_parameter('yolo_path').value
+
+        # Select device for inference and choose appropriate depth estimation model
+        self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        self.get_logger().info(f'Using device: {self.device}')
+        self.model = YOLO(yolo_path, task='detect') # Make sure `pip install onnxruntime` is done in the environment.
+
+        if self.device == 'cpu':
+            self.depth_pipe = pipeline(
+                task='depth-estimation',
+                model='Intel/dpt-swinv2-tiny-256',
+                device=-1
+            )
+        else:
+            self.depth_pipe = pipeline(
+                task='depth-estimation',
+                model='depth-anything/Depth-Anything-V2-Small-hf',
+                device=0
+            )
 
         # Initialize GStreamer and build pipeline
         Gst.init(None)
@@ -59,26 +89,39 @@ class VideoInterfaceNode(Node):
         frame = np.frombuffer(mapinfo.data, np.uint8).reshape(height, width, 3)
         buf.unmap(mapinfo)
 
-        # Display the raw input frame for debugging
-        cv2.imshow('Input Stream', cv2.cvtColor(frame, cv2.COLOR_RGB2BGR))
-        cv2.waitKey(1)
-
         # TODO: Insert detection/tracking logic here to compute object position
+        results = self.model.track(frame, persist=True, classes=[PERSON_CLASS_ID], imgsz=IMG_SIZE, verbose=False) # yolo takes care of resizing.
+        boxes = results[0].boxes
 
-        # TODO: Insert detection/tracking logic here to compute object position
-        # For demonstration, here we are publishing a dummy Point at origin
-                # Compute and publish object position:
-        # x = horizontal center coordinate of the object
-        # y = unused (flat-ground assumption)
-        # z = object area (controller caps at 10000 to stop robot when object is too large)
-        msg = Point()
-        msg.x = 200.0  # object center x-coordinate
-        msg.y = 0.0  # y-coordinate unused
-        msg.z = 10001.0  # object area; >10000 indicates 'too close'
-        self.position_pub.publish(msg)
-        # To adjust robot behavior, apply a scaling factor to 'z' (e.g., couple with depth estimation)
-        # Log at debug level if needed:
-        # self.get_logger().debug(f'Published position: ({msg.x}, {msg.y}, {msg.z})')
+        if boxes is None or boxes.id is None:
+            return
+        
+        coords = boxes.xyxy.int().tolist()       # [[x1,y1,x2,y2], ...]
+        ids = boxes.id.int().tolist()            # [id, ...]
+        
+        for (x1, y1, x2, y2), tid in zip(coords, ids):
+            x_center = (x1 + x2) / 2.0
+
+            pil_frame = Image.fromarray(frame)
+            person_patch = pil_frame.crop((x1, y1, x2, y2))
+            depth_result = self.depth_pipe(person_patch)
+            person_depth = np.array(depth_result['predicted_depth']).mean()
+
+            # Publish person position as a Point message (x=center_x, y=0, z=depth) for the robot controller
+            msg = Point()
+            msg.x = x_center  # object center x-coordinate
+            msg.y = 0.0  # y-coordinate unused, assumed flat ground.
+            msg.z = person_depth  # depth from deep net
+            self.position_pub.publish(msg)
+
+            # draw boxes
+            if DEBUG:
+                cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                cv2.putText(frame, f'ID:{tid} depth:{person_depth:.2f}', (x1, y1 - 10),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+                cv2.imshow('Detection Stream', cv2.cvtColor(frame, cv2.COLOR_RGB2BGR))
+                cv2.waitKey(1)
+                self.get_logger().debug(f'Published position: ({msg.x}, {msg.y}, {msg.z})')
 
     def destroy_node(self):
         # Cleanup GStreamer resources on shutdown

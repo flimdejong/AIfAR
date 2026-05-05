@@ -1,7 +1,7 @@
 from ultralytics import YOLO
 import os
 current_dir = os.path.dirname(os.path.abspath(__file__))
-yolo_dir = os.path.join(current_dir, "..", "resource", "yolo26n.pt")
+yolo_dir = os.path.join(current_dir, "..", "resource", "yolov8n", "yolov8n.onnx")
 # Load a COCO-pretrained YOLO26n model
 model = YOLO(yolo_dir)
 
