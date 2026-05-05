@@ -1,6 +1,6 @@
 # AIfAR
 
-### Create venv and run the test scripts
+### Create venv and run the test scripts. RUN FROM INSIDE /relbot_video/interface
 
 1. sudo apt update && sudo apt install python3-venv -y
 2. python3 -m venv myenv
@@ -10,6 +10,6 @@
 
 To run the video interface script locally, run:
 
-1. pip install openvino (only if you run on CPU and not on CUDA or MPS)
+1. pip install onnxruntime. if you have nvidia gpu do: pip install onnxruntime-gpu
 2. source myenv/bin/activate
 3. python3 test/test_videointerface.py
