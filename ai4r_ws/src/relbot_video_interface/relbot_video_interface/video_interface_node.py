@@ -16,7 +16,7 @@ from gi.repository import Gst
 # Some constants
 IMG_SIZE = 320  # YOLO input size. onnx is also exported with this size!! To change: `yolo export model=yolov8n.pt format=onnx imgsz=NEWSIZE` in terminal.
 PERSON_CLASS_ID = 0  # COCO class ID for 'person'
-DEBUG = False  # Set to True to visualize input frames and debug info
+DEBUG = True  # Set to True to visualize input frames and debug info
 
 class VideoInterfaceNode(Node):
     def __init__(self):
@@ -32,7 +32,7 @@ class VideoInterfaceNode(Node):
             'rtph264depay ! avdec_h264 ! videoconvert ! '
             'video/x-raw,format=RGB ! appsink name=sink'
         ))
-        self.declare_parameter('yolo_path', 'resource/yolov8n/yolov8n.onnx') # onnx file from resource/yolov8n/yolov8n.onnx
+        self.declare_parameter('yolo_path', '/home/costin/ros2_ws/src/relbot_video_interface/resource') # onnx file from resource/yolov8n/yolov8n.onnx
 
         pipeline_str = self.get_parameter('gst_pipeline').value
         yolo_path = self.get_parameter('yolo_path').value
@@ -42,18 +42,18 @@ class VideoInterfaceNode(Node):
         self.get_logger().info(f'Using device: {self.device}')
         self.model = YOLO(yolo_path, task='detect') # Make sure `pip install onnxruntime` is done in the environment.
 
-        if self.device == 'cpu':
-            self.depth_pipe = pipeline(
-                task='depth-estimation',
-                model='Intel/dpt-swinv2-tiny-256',
-                device=-1
-            )
-        else:
-            self.depth_pipe = pipeline(
-                task='depth-estimation',
-                model='depth-anything/Depth-Anything-V2-Small-hf',
-                device=0
-            )
+        #if self.device == 'cpu':
+        #    self.depth_pipe = pipeline(
+        #        task='depth-estimation',
+        #        model='Intel/dpt-swinv2-tiny-256',
+        #        device=-1
+        #    )
+        #else:
+        #    self.depth_pipe = pipeline(
+        #        task='depth-estimation',
+        #        model='depth-anything/Depth-Anything-V2-Small-hf',
+        #        device=0
+        #    )
 
         # Initialize GStreamer and build pipeline
         Gst.init(None)
@@ -86,7 +86,7 @@ class VideoInterfaceNode(Node):
             return
 
         # Convert raw buffer to numpy array [height, width, channels]
-        frame = np.frombuffer(mapinfo.data, np.uint8).reshape(height, width, 3)
+        frame = np.frombuffer(mapinfo.data, np.uint8).reshape(height, width, 3).copy()
         buf.unmap(mapinfo)
 
         # TODO: Insert detection/tracking logic here to compute object position
@@ -102,23 +102,23 @@ class VideoInterfaceNode(Node):
         for (x1, y1, x2, y2), tid in zip(coords, ids):
             x_center = (x1 + x2) / 2.0
 
-            pil_frame = Image.fromarray(frame)
-            person_patch = pil_frame.crop((x1, y1, x2, y2))
-            depth_result = self.depth_pipe(person_patch)
-            person_depth = np.array(depth_result['predicted_depth']).mean()
+            # pil_frame = Image.fromarray(frame)
+            # person_patch = pil_frame.crop((x1, y1, x2, y2))
+            # depth_result = self.depth_pipe(person_patch)
+            # person_depth = np.array(depth_result['predicted_depth']).mean()
 
             # Publish person position as a Point message (x=center_x, y=0, z=depth) for the robot controller
             msg = Point()
             msg.x = x_center  # object center x-coordinate
             msg.y = 0.0  # y-coordinate unused, assumed flat ground.
-            msg.z = person_depth  # depth from deep net
+            msg.z = 1.0  # depth from deep net
             self.position_pub.publish(msg)
 
             # draw boxes
             if DEBUG:
                 cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-                cv2.putText(frame, f'ID:{tid} depth:{person_depth:.2f}', (x1, y1 - 10),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+                #cv2.putText(frame, f'ID:{tid} depth:{person_depth:.2f}', (x1, y1 - 10),
+                #            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
                 cv2.imshow('Detection Stream', cv2.cvtColor(frame, cv2.COLOR_RGB2BGR))
                 cv2.waitKey(1)
                 self.get_logger().debug(f'Published position: ({msg.x}, {msg.y}, {msg.z})')
