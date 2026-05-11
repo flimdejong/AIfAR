@@ -38,7 +38,7 @@ RUN apt-get update && \
       "torch==2.11.0" "torchvision==0.26.0" \
       "polars==1.39.3" "ultralytics-thop==2.0.18" && \
     pip3 install --break-system-packages --no-cache-dir --no-deps \
-      "ultralytics==8.4.38" && \
+      "ultralytics==8.4.38" "lapx>=0.5.12" && \
     # Cleanup apt caches
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
