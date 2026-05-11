@@ -7,7 +7,7 @@ import numpy as np
 import cv2
 from ultralytics import YOLO
 from PIL import Image
-from transformers import pipeline
+# from transformers import pipeline
 import torch
 
 gi.require_version('Gst', '1.0')
@@ -32,15 +32,13 @@ class VideoInterfaceNode(Node):
             'rtph264depay ! avdec_h264 ! videoconvert ! '
             'video/x-raw,format=RGB ! appsink name=sink'
         ))
-        self.declare_parameter('yolo_path', '/home/costin/ros2_ws/src/relbot_video_interface/resource') # onnx file from resource/yolov8n/yolov8n.onnx
 
         pipeline_str = self.get_parameter('gst_pipeline').value
-        yolo_path = self.get_parameter('yolo_path').value
 
         # Select device for inference and choose appropriate depth estimation model
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
         self.get_logger().info(f'Using device: {self.device}')
-        self.model = YOLO(yolo_path, task='detect') # Make sure `pip install onnxruntime` is done in the environment.
+        self.model = YOLO('yolov8n.pt')
 
         #if self.device == 'cpu':
         #    self.depth_pipe = pipeline(
