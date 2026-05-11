@@ -36,9 +36,10 @@ RUN apt-get update && \
     # Keep ROS/OpenCV/NumPy apt-managed; pip only supplies ML packages missing from apt.
     pip3 install --break-system-packages --no-cache-dir \
       "torch==2.11.0" "torchvision==0.26.0" \
-      "polars==1.39.3" "ultralytics-thop==2.0.18" && \
+      "polars==1.39.3" "ultralytics-thop==2.0.18" "numpy==1.26.4" && \
     pip3 install --break-system-packages --no-cache-dir --no-deps \
       "ultralytics==8.4.38" "lapx>=0.5.12" && \
+    pip3 install --break-system-packages --ignore-installed "transformers>=5.8.0" && \
     # Cleanup apt caches
     apt-get clean && rm -rf /var/lib/apt/lists/*
 

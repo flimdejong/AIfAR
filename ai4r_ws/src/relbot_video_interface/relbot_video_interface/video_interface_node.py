@@ -7,7 +7,7 @@ import numpy as np
 import cv2
 from ultralytics import YOLO
 from PIL import Image
-# from transformers import pipeline
+from transformers import pipeline
 import torch
 
 gi.require_version('Gst', '1.0')
@@ -40,12 +40,12 @@ class VideoInterfaceNode(Node):
         self.get_logger().info(f'Using device: {self.device}')
         self.model = YOLO('yolov8n.pt')
 
-        #if self.device == 'cpu':
-        #    self.depth_pipe = pipeline(
-        #        task='depth-estimation',
-        #        model='Intel/dpt-swinv2-tiny-256',
-        #        device=-1
-        #    )
+        if self.device == 'cpu':
+           self.depth_pipe = pipeline(
+               task='depth-estimation',
+               model='Intel/dpt-swinv2-tiny-256',
+               device=-1
+           )
         #else:
         #    self.depth_pipe = pipeline(
         #        task='depth-estimation',
@@ -100,16 +100,16 @@ class VideoInterfaceNode(Node):
         for (x1, y1, x2, y2), tid in zip(coords, ids):
             x_center = (x1 + x2) / 2.0
 
-            # pil_frame = Image.fromarray(frame)
-            # person_patch = pil_frame.crop((x1, y1, x2, y2))
-            # depth_result = self.depth_pipe(person_patch)
-            # person_depth = np.array(depth_result['predicted_depth']).mean()
+            pil_frame = Image.fromarray(frame)
+            person_patch = pil_frame.crop((x1, y1, x2, y2))
+            depth_result = self.depth_pipe(person_patch)
+            person_depth = np.array(depth_result['predicted_depth']).mean()
 
             # Publish person position as a Point message (x=center_x, y=0, z=depth) for the robot controller
             msg = Point()
             msg.x = x_center  # object center x-coordinate
             msg.y = 0.0  # y-coordinate unused, assumed flat ground.
-            msg.z = 1.0  # depth from deep net
+            msg.z = person_depth  # depth from deep net
             self.position_pub.publish(msg)
 
             # draw boxes
