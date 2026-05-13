@@ -132,9 +132,9 @@ class VideoInterfaceNode(Node):
 
             # Publish person position as a Point message (x=center_x, y=0, z=depth) for the robot controller
             msg = Point()
-            msg.x = x_center  # object center x-coordinate
+            msg.x = float(x_center)  # object center x-coordinate
             msg.y = 0.0  # y-coordinate unused, assumed flat ground.
-            msg.z = person_depth  # depth from deep net
+            msg.z = float(person_depth)  # depth from deep net
             self.position_pub.publish(msg)
 
             # draw boxes
