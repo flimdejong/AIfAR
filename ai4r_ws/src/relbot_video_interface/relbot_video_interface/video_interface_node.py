@@ -103,7 +103,16 @@ class VideoInterfaceNode(Node):
             pil_frame = Image.fromarray(frame)
             person_patch = pil_frame.crop((x1, y1, x2, y2))
             depth_result = self.depth_pipe(person_patch)
-            person_depth = np.array(depth_result['predicted_depth']).mean()
+
+            depth_map = np.array(depth_result['predicted_depth'])
+            #print(f"depth shape: {depth_map.shape}")
+            # print(f"min: {depth_map.min():.2f}, max: {depth_map.max():.2f}, mean: {depth_map.mean():.2f}")
+            scale_y = depth_map.shape[0] / frame.shape[0]
+            scale_x = depth_map.shape[1] / frame.shape[1]
+
+            cx = int(((x1 + x2) / 2) * scale_x)
+            cy = int(((y1 + y2) / 2) * scale_y)
+            person_depth = float(depth_map[cy, cx])
 
             # Publish person position as a Point message (x=center_x, y=0, z=depth) for the robot controller
             msg = Point()
