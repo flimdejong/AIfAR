@@ -46,12 +46,12 @@ class VideoInterfaceNode(Node):
                model='Intel/dpt-swinv2-tiny-256',
                device=-1
            )
-        #else:
-        #    self.depth_pipe = pipeline(
-        #        task='depth-estimation',
-        #        model='depth-anything/Depth-Anything-V2-Small-hf',
-        #        device=0
-        #    )
+        else:
+           self.depth_pipe = pipeline(
+               task='depth-estimation',
+               model='Intel/dpt-swinv2-tiny-256',
+               device=0
+           )
 
         # Initialize GStreamer and build pipeline
         Gst.init(None)
