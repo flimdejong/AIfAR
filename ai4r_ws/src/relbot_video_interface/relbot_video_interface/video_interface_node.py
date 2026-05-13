@@ -67,6 +67,8 @@ class VideoInterfaceNode(Node):
         self.timer = self.create_timer(1.0 / 30.0, self.on_timer)
         self.get_logger().info('VideoInterfaceNode initialized, streaming at 30Hz')
 
+        self.target_id = None
+
     def on_timer(self):
         # Pull the latest frame from the GStreamer appsink
         sample = self.sink.emit('pull-sample')
@@ -97,7 +99,21 @@ class VideoInterfaceNode(Node):
         coords = boxes.xyxy.int().tolist()       # [[x1,y1,x2,y2], ...]
         ids = boxes.id.int().tolist()            # [id, ...]
         
+        if self.target_id is not None and self.target_id not in ids:
+            self.target_lost_frames += 1
+            if self.target_lost_frames > 30:  # ~1 second at 30fps
+                self.target_id = None
+                self.target_lost_frames = 0
+            return
+        else:
+            self.target_lost_frames = 0
+
         for (x1, y1, x2, y2), tid in zip(coords, ids):
+            if self.target_id is None:
+                self.target_id = tid
+            if tid != self.target_id:
+                continue
+
             x_center = (x1 + x2) / 2.0
 
             pil_frame = Image.fromarray(frame)
