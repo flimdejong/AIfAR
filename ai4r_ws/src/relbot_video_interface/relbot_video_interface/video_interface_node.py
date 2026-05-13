@@ -40,18 +40,11 @@ class VideoInterfaceNode(Node):
         self.get_logger().info(f'Using device: {self.device}')
         self.model = YOLO('yolov8n.pt')
 
-        if self.device == 'cpu':
-           self.depth_pipe = pipeline(
-               task='depth-estimation',
-               model='Intel/dpt-swinv2-tiny-256',
-               device=-1
-           )
-        #else:
-        #    self.depth_pipe = pipeline(
-        #        task='depth-estimation',
-        #        model='depth-anything/Depth-Anything-V2-Small-hf',
-        #        device=0
-        #    )
+        self.midas = torch.hub.load("intel-isl/MiDaS", "MiDaS")
+        self.midas.to(self.device)
+        self.midas.eval()
+        midas_transforms = torch.hub.load("intel-isl/MiDaS", "transforms")
+        self.transform = midas_transforms.default_transform
 
         # Initialize GStreamer and build pipeline
         Gst.init(None)
@@ -100,10 +93,19 @@ class VideoInterfaceNode(Node):
         for (x1, y1, x2, y2), tid in zip(coords, ids):
             x_center = (x1 + x2) / 2.0
 
-            pil_frame = Image.fromarray(frame)
-            person_patch = pil_frame.crop((x1, y1, x2, y2))
-            depth_result = self.depth_pipe(person_patch)
-            person_depth = np.array(depth_result['predicted_depth']).mean()
+            person_patch_np = frame[int(y1):int(y2), int(x1):int(x2)]
+            if person_patch_np.size == 0:
+                continue
+            input_batch = self.transform(person_patch_np).to(self.device)
+            with torch.no_grad():
+                prediction = self.midas(input_batch)
+                prediction = torch.nn.functional.interpolate(
+                    prediction.unsqueeze(1),
+                    size=person_patch_np.shape[:2],
+                    mode="bicubic",
+                    align_corners=False,
+                ).squeeze()
+            person_depth = prediction.cpu().numpy().mean()
 
             # Publish person position as a Point message (x=center_x, y=0, z=depth) for the robot controller
             msg = Point()
