@@ -1,22 +1,27 @@
 # AIfAR
 
 # Setup
-git clone https://github.com/UAV-Centre-ITC/AI4R_RELBot.git
+```bash
+git clone https://github.com/flimdejong/AIfAR.git
 cd AI4R_RELBot
 chmod +x assignment1_setup.sh
-
-Add "ultralytics==8.4.38" "lapx>=0.5.12" && \ to the dockerfile or install in current runtime docker itself
+```
 
 # Running
-Run setup script: ./assignment1_setup.sh
+Run setup script
 
-Navigate to: cd /ai4r_ws
+```bash
+./assignment1_setup.sh
+```
 
-Then colcon build and source
+Navigate to /ai4r_ws
+Then colcon build and source:
+```bash
 colcon build --packages-select relbot_video_interface
 source install/setup.bash
+```
 
-Launch the rosnode
+Launch the rosnode with the main code:
 ```bash
 ros2 launch relbot_video_interface video_interface.launch.py
 ```
