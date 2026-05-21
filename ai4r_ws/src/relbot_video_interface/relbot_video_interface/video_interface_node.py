@@ -38,13 +38,24 @@ class VideoInterfaceNode(Node):
         # Select device for inference and choose appropriate depth estimation model
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
         self.get_logger().info(f'Using device: {self.device}')
-        self.model = YOLO('yolov8n.pt')
+        
+        ## Change to your own directory (for us in the ai4r_ws directory)
+        self.model = YOLO('best.pt') # Has helmet detection
 
-        self.midas = torch.hub.load("intel-isl/MiDaS", "MiDaS")
-        self.midas.to(self.device)
-        self.midas.eval()
-        midas_transforms = torch.hub.load("intel-isl/MiDaS", "transforms")
-        self.transform = midas_transforms.default_transform
+        ## Change to your own directory
+        if self.device == 'cpu':
+           self.depth_pipe = pipeline(
+               task='depth-estimation',
+               model='Intel/dpt-swinv2-tiny-256',
+               device=-1
+           )
+        ## Change to your own directory
+        else:
+           self.depth_pipe = pipeline(
+               task='depth-estimation',
+               model='/ai4r_ws/src/relbot_video_interface/resource/local_depth_model',
+               device=0
+           )
 
         # Initialize GStreamer and build pipeline
         Gst.init(None)
@@ -59,6 +70,8 @@ class VideoInterfaceNode(Node):
         # The period (1/30) sets how often on_timer() is called
         self.timer = self.create_timer(1.0 / 30.0, self.on_timer)
         self.get_logger().info('VideoInterfaceNode initialized, streaming at 30Hz')
+
+        self.target_id = None
 
     def on_timer(self):
         # Pull the latest frame from the GStreamer appsink
@@ -90,28 +103,45 @@ class VideoInterfaceNode(Node):
         coords = boxes.xyxy.int().tolist()       # [[x1,y1,x2,y2], ...]
         ids = boxes.id.int().tolist()            # [id, ...]
         
+        if self.target_id is not None and self.target_id not in ids:
+            self.target_lost_frames += 1
+            if self.target_lost_frames > 30:  # ~1 second at 30fps
+                self.target_id = None
+                self.target_lost_frames = 0
+            return
+        else:
+            self.target_lost_frames = 0
+
         for (x1, y1, x2, y2), tid in zip(coords, ids):
+            if self.target_id is None:
+                self.target_id = tid
+            if tid != self.target_id:
+                continue
+
             x_center = (x1 + x2) / 2.0
 
-            person_patch_np = frame[int(y1):int(y2), int(x1):int(x2)]
-            if person_patch_np.size == 0:
-                continue
-            input_batch = self.transform(person_patch_np).to(self.device)
-            with torch.no_grad():
-                prediction = self.midas(input_batch)
-                prediction = torch.nn.functional.interpolate(
-                    prediction.unsqueeze(1),
-                    size=person_patch_np.shape[:2],
-                    mode="bicubic",
-                    align_corners=False,
-                ).squeeze()
-            person_depth = prediction.cpu().numpy().mean()
+            pil_frame = Image.fromarray(frame)
+            person_patch = pil_frame.crop((x1, y1, x2, y2))
+            depth_result = self.depth_pipe(person_patch)
+
+            depth_map = np.array(depth_result['predicted_depth'])
+            #print(f"depth shape: {depth_map.shape}")
+            # print(f"min: {depth_map.min():.2f}, max: {depth_map.max():.2f}, mean: {depth_map.mean():.2f}")
+            scale_y = depth_map.shape[0] / frame.shape[0]
+            scale_x = depth_map.shape[1] / frame.shape[1]
+
+            cx = int(((x1 + x2) / 2) * scale_x)
+            cy = int(((y1 + y2) / 2) * scale_y)
+            person_depth = float(depth_map[cy, cx])
 
             # Publish person position as a Point message (x=center_x, y=0, z=depth) for the robot controller
             msg = Point()
-            msg.x = x_center  # object center x-coordinate
+            msg.x = float(x_center)  # object center x-coordinate
             msg.y = 0.0  # y-coordinate unused, assumed flat ground.
-            msg.z = person_depth  # depth from deep net
+
+            # CHANGE VALUE STILL, 10000 means stopping!!!!!!
+            msg.z = (float(person_depth))*10  # depth from deep net 
+
             self.position_pub.publish(msg)
 
             # draw boxes
